@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use std::sync::atomic::{AtomicBool, Ordering};
 use tray_icon::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
-use tray_icon::{Icon, TrayIcon, TrayIconBuilder};
+use tray_icon::{TrayIcon, TrayIconBuilder};
 
 static SETTINGS_OPEN: AtomicBool = AtomicBool::new(false);
 
@@ -15,8 +15,7 @@ pub struct TrayController {
 
 impl TrayController {
     pub fn new() -> Result<Self> {
-        let icon = Icon::from_rgba(build_icon_rgba(), 32, 32)
-            .context("Failed to build tray icon")?;
+        let icon = crate::icon::load_tray_icon().context("Failed to load tray icon")?;
 
         let menu = Menu::new();
         let settings_id = MenuItem::new("Settings", true, None);
@@ -92,24 +91,4 @@ pub fn try_open_settings(
     });
 
     true
-}
-
-fn build_icon_rgba() -> Vec<u8> {
-    let size = 32usize;
-    let mut pixels = vec![0u8; size * size * 4];
-    let center = 16.0f32;
-    let radius = 10.0f32;
-
-    for y in 0..size {
-        for x in 0..size {
-            let dx = x as f32 - center;
-            let dy = y as f32 - center;
-            let idx = (y * size + x) * 4;
-            if dx * dx + dy * dy <= radius * radius {
-                pixels[idx..idx + 4].copy_from_slice(&[120, 180, 255, 255]);
-            }
-        }
-    }
-
-    pixels
 }

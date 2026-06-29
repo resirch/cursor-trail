@@ -9,12 +9,17 @@ pub fn run_settings_window(
     initial_config: Config,
     apply_tx: Sender<Config>,
 ) -> Result<()> {
+    let window_icon = crate::icon::load_window_icon().ok();
+    let mut viewport = egui::ViewportBuilder::default()
+        .with_inner_size([540.0, 720.0])
+        .with_min_inner_size([420.0, 320.0])
+        .with_resizable(true)
+        .with_title("Cursor Trail Settings");
+    if let Some(icon) = window_icon {
+        viewport = viewport.with_icon(icon);
+    }
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_inner_size([540.0, 720.0])
-            .with_min_inner_size([420.0, 320.0])
-            .with_resizable(true)
-            .with_title("Cursor Trail Settings"),
+        viewport,
         event_loop_builder: Some(Box::new(|builder| {
             #[cfg(target_os = "windows")]
             {

@@ -5,6 +5,11 @@ edition = "2021"
 description = "Customizable cursor trail and hanging avatar overlay for Windows 11"
 license = "MIT"
 
+[build-dependencies]
+ico = "0.4"
+image = { version = "0.25", default-features = false, features = ["png"] }
+winres = "0.1"
+
 [dependencies]
 anyhow = "1.0"
 clap = { version = "4.5", features = ["derive"] }
