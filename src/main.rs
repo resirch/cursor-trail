@@ -14,7 +14,7 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use config::Config;
 use notify::{Config as NotifyConfig, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
-use overlay::{get_cursor_position, OverlayWindow};
+use overlay::{get_cursor_position, is_cursor_visible, OverlayWindow};
 use pendulum::PendulumAvatar;
 use render::{FrameBuffer, Sprite};
 use std::path::{Path, PathBuf};
@@ -122,6 +122,19 @@ fn main() -> Result<()> {
         let now = Instant::now();
         let dt = (now - last_frame).as_secs_f32().min(0.05);
         last_frame = now;
+
+        if !is_cursor_visible()? {
+            trail.clear();
+            avatar.reset();
+            frame.clear();
+            overlay.present(&frame)?;
+
+            let elapsed = now.elapsed();
+            if elapsed < target_frame_time {
+                std::thread::sleep(target_frame_time - elapsed);
+            }
+            continue;
+        }
 
         let (cursor_x, cursor_y) = get_cursor_position()?;
         let (origin_x, origin_y) = overlay.origin();

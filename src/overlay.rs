@@ -9,9 +9,9 @@ use windows::Win32::Graphics::Gdi::{
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, DispatchMessageW, GetSystemMetrics,
+    CreateWindowExW, DefWindowProcW, DispatchMessageW, GetCursorInfo, GetSystemMetrics,
     PostQuitMessage, RegisterClassW, ShowWindow, TranslateMessage, UpdateLayeredWindow,
-    CS_HREDRAW, CS_VREDRAW, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN,
+    CS_HREDRAW, CS_VREDRAW, CURSORINFO, CURSOR_SHOWING, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN,
     SM_YVIRTUALSCREEN, SW_SHOW, ULW_ALPHA, WINDOW_EX_STYLE, WINDOW_STYLE, WM_DESTROY,
     WNDCLASSW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_POPUP,
 };
@@ -205,5 +205,16 @@ pub fn get_cursor_position() -> Result<(i32, i32)> {
         windows::Win32::UI::WindowsAndMessaging::GetCursorPos(&mut point)
             .context("Failed to read cursor position")?;
         Ok((point.x, point.y))
+    }
+}
+
+pub fn is_cursor_visible() -> Result<bool> {
+    unsafe {
+        let mut info = CURSORINFO {
+            cbSize: mem::size_of::<CURSORINFO>() as u32,
+            ..Default::default()
+        };
+        GetCursorInfo(&mut info).context("Failed to read cursor visibility")?;
+        Ok((info.flags.0 & CURSOR_SHOWING.0) != 0)
     }
 }

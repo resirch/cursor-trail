@@ -17,6 +17,11 @@ impl TrailSystem {
         }
     }
 
+    pub fn clear(&mut self) {
+        self.points.clear();
+        self.last_cursor = None;
+    }
+
     pub fn update(&mut self, cursor: Vec2, config: &TrailConfig, dt: f32) {
         if !config.enabled {
             self.points.clear();
