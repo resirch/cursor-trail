@@ -215,6 +215,9 @@ pub fn is_cursor_visible() -> Result<bool> {
             ..Default::default()
         };
         GetCursorInfo(&mut info).context("Failed to read cursor visibility")?;
-        Ok((info.flags.0 & CURSOR_SHOWING.0) != 0)
+
+        let showing_flag = (info.flags.0 & CURSOR_SHOWING.0) != 0;
+        let has_cursor = !info.hCursor.is_invalid();
+        Ok(showing_flag && has_cursor)
     }
 }

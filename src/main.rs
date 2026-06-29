@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod config;
+mod cursor;
 mod icon;
 mod math;
 mod overlay;
@@ -14,7 +15,8 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use config::Config;
 use notify::{Config as NotifyConfig, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
-use overlay::{get_cursor_position, is_cursor_visible, OverlayWindow};
+use cursor::CursorTracker;
+use overlay::OverlayWindow;
 use pendulum::PendulumAvatar;
 use render::{FrameBuffer, Sprite};
 use std::path::{Path, PathBuf};
@@ -67,6 +69,7 @@ fn main() -> Result<()> {
         Duration::from_secs_f64(1.0 / config.window.fps.max(1) as f64);
     let mut last_frame = Instant::now();
     let mut running = true;
+    let mut cursor_tracker = CursorTracker::new();
 
     while running {
         if !overlay.pump_messages() {
@@ -123,7 +126,10 @@ fn main() -> Result<()> {
         let dt = (now - last_frame).as_secs_f32().min(0.05);
         last_frame = now;
 
-        if !is_cursor_visible()? {
+        let (cursor_x, cursor_y, os_visible) = cursor::query_cursor_state()?;
+        let screen_pos = (cursor_x, cursor_y);
+
+        if cursor_tracker.should_hide_overlay(&config.window, screen_pos, os_visible) {
             trail.clear();
             avatar.reset();
             frame.clear();
@@ -136,12 +142,8 @@ fn main() -> Result<()> {
             continue;
         }
 
-        let (cursor_x, cursor_y) = get_cursor_position()?;
         let (origin_x, origin_y) = overlay.origin();
-        let cursor = math::Vec2::new(
-            (cursor_x - origin_x) as f32,
-            (cursor_y - origin_y) as f32,
-        );
+        let cursor = cursor::screen_to_overlay(screen_pos, (origin_x, origin_y));
 
         trail.update(cursor, &config.trail, dt);
         avatar.update(cursor, &config.avatar, dt);

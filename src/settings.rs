@@ -223,6 +223,12 @@ fn avatar_settings(ui: &mut egui::Ui, avatar: &mut AvatarConfig) {
 fn window_settings(ui: &mut egui::Ui, window: &mut WindowConfig) {
     ui.add(egui::Slider::new(&mut window.fps, 15..=360).text("FPS"));
     ui.label("Overlay redraw rate. Higher is smoother but uses more CPU.");
+    ui.add(
+        egui::Slider::new(&mut window.hide_after_idle_secs, 0.0..=10.0).text("Hide after idle (s)"),
+    );
+    ui.label(
+        "Hides trail and avatar when the cursor stops moving. Matches YouTube-style auto-hide. 0 = off.",
+    );
 }
 
 fn color_picker_rgba(ui: &mut egui::Ui, label: &str, color: &mut [u8; 4]) {

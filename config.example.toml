@@ -19,3 +19,4 @@ string_width = 1.0
 
 [window]
 fps = 60
+hide_after_idle_secs = 3.0

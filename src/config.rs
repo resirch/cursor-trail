@@ -62,6 +62,9 @@ pub struct AvatarConfig {
 pub struct WindowConfig {
     #[serde(default = "default_fps")]
     pub fps: u32,
+    /// Hide overlay after this many seconds without cursor movement (e.g. YouTube idle hide). 0 = off.
+    #[serde(default = "default_hide_after_idle_secs")]
+    pub hide_after_idle_secs: f32,
 }
 
 fn default_true() -> bool {
@@ -120,6 +123,10 @@ fn default_fps() -> u32 {
     60
 }
 
+fn default_hide_after_idle_secs() -> f32 {
+    3.0
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -163,6 +170,7 @@ impl Default for WindowConfig {
     fn default() -> Self {
         Self {
             fps: default_fps(),
+            hide_after_idle_secs: default_hide_after_idle_secs(),
         }
     }
 }
