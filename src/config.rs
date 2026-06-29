@@ -19,24 +19,18 @@ pub struct TrailConfig {
     pub enabled: bool,
     #[serde(default = "default_trail_color")]
     pub color: [u8; 4],
-    #[serde(default = "default_max_points")]
-    pub max_points: usize,
-    #[serde(default = "default_point_size")]
-    pub point_size: f32,
-    #[serde(default = "default_fade_speed")]
-    pub fade_speed: f32,
-    #[serde(default = "default_spacing")]
-    pub spacing: f32,
-    #[serde(default = "default_trail_shape")]
-    pub shape: TrailShape,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-pub enum TrailShape {
-    Circle,
-    Square,
-    Star,
+    /// Maximum trail length in pixels.
+    #[serde(alias = "length", default = "default_trail_max_length")]
+    pub max_length: f32,
+    /// Line thickness in pixels.
+    #[serde(default = "default_trail_width")]
+    pub width: f32,
+    /// Pinch line width toward the tail. 0 = uniform, 1 = tapers to a point.
+    #[serde(default = "default_trail_taper")]
+    pub taper: f32,
+    /// Seconds for the trail to catch up to the cursor when stopped or moving slowly. 0 = disabled.
+    #[serde(default = "default_trail_kill_time")]
+    pub kill_time: f32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -52,22 +46,22 @@ pub struct AvatarConfig {
     /// Gravity in pixels per second squared. Set to 0 for zero-gravity floating.
     #[serde(default = "default_gravity")]
     pub gravity: f32,
+    /// How quickly swinging settles. 0 = endless swing, 1 = instant stop.
     #[serde(default = "default_damping")]
     pub damping: f32,
     #[serde(default = "default_string_color")]
     pub string_color: [u8; 4],
     #[serde(default = "default_string_width")]
     pub string_width: f32,
-    #[serde(default = "default_swing_boost")]
-    pub swing_boost: f32,
+    /// How much each rope segment can compress or stretch. Higher = more give.
+    #[serde(default = "default_string_slack")]
+    pub string_slack: f32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WindowConfig {
     #[serde(default = "default_fps")]
     pub fps: u32,
-    #[serde(default = "default_true")]
-    pub click_through: bool,
 }
 
 fn default_true() -> bool {
@@ -75,27 +69,23 @@ fn default_true() -> bool {
 }
 
 fn default_trail_color() -> [u8; 4] {
-    [120, 180, 255, 200]
+    [255, 255, 255, 255]
 }
 
-fn default_max_points() -> usize {
-    28
+fn default_trail_max_length() -> f32 {
+    300.0
 }
 
-fn default_point_size() -> f32 {
-    10.0
+fn default_trail_width() -> f32 {
+    5.0
 }
 
-fn default_fade_speed() -> f32 {
-    1.2
+fn default_trail_taper() -> f32 {
+    1.0
 }
 
-fn default_spacing() -> f32 {
-    6.0
-}
-
-fn default_trail_shape() -> TrailShape {
-    TrailShape::Circle
+fn default_trail_kill_time() -> f32 {
+    0.10
 }
 
 fn default_string_length() -> f32 {
@@ -103,15 +93,15 @@ fn default_string_length() -> f32 {
 }
 
 fn default_avatar_size() -> f32 {
-    56.0
+    25.0
 }
 
 fn default_gravity() -> f32 {
-    980.0
+    900.0
 }
 
 fn default_damping() -> f32 {
-    0.985
+    0.15
 }
 
 fn default_string_color() -> [u8; 4] {
@@ -119,11 +109,11 @@ fn default_string_color() -> [u8; 4] {
 }
 
 fn default_string_width() -> f32 {
-    2.0
+    1.0
 }
 
-fn default_swing_boost() -> f32 {
-    1.0
+fn default_string_slack() -> f32 {
+    0.40
 }
 
 fn default_fps() -> u32 {
@@ -145,11 +135,10 @@ impl Default for TrailConfig {
         Self {
             enabled: default_true(),
             color: default_trail_color(),
-            max_points: default_max_points(),
-            point_size: default_point_size(),
-            fade_speed: default_fade_speed(),
-            spacing: default_spacing(),
-            shape: default_trail_shape(),
+            max_length: default_trail_max_length(),
+            width: default_trail_width(),
+            taper: default_trail_taper(),
+            kill_time: default_trail_kill_time(),
         }
     }
 }
@@ -165,7 +154,7 @@ impl Default for AvatarConfig {
             damping: default_damping(),
             string_color: default_string_color(),
             string_width: default_string_width(),
-            swing_boost: default_swing_boost(),
+            string_slack: default_string_slack(),
         }
     }
 }
@@ -174,8 +163,31 @@ impl Default for WindowConfig {
     fn default() -> Self {
         Self {
             fps: default_fps(),
-            click_through: default_true(),
         }
+    }
+}
+
+impl TrailConfig {
+    pub fn reset_defaults_preserving_state(&mut self) {
+        let enabled = self.enabled;
+        *self = Self::default();
+        self.enabled = enabled;
+    }
+}
+
+impl AvatarConfig {
+    pub fn reset_defaults_preserving_state(&mut self) {
+        let enabled = self.enabled;
+        let image_path = self.image_path.clone();
+        *self = Self::default();
+        self.enabled = enabled;
+        self.image_path = image_path;
+    }
+}
+
+impl WindowConfig {
+    pub fn reset_defaults(&mut self) {
+        *self = Self::default();
     }
 }
 

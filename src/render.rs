@@ -128,20 +128,48 @@ impl FrameBuffer {
             return;
         }
 
-        let dir = delta.normalized();
-        let normal = Vec2::new(-dir.y, dir.x);
-        let half = width * 0.5;
-
-        let steps = length.ceil() as i32;
-        for step in 0..=steps {
-            let t = step as f32 / steps as f32;
+        let step = 0.5f32;
+        let steps = (length / step).ceil() as i32;
+        let radius = width * 0.5;
+        for i in 0..=steps {
+            let t = i as f32 / steps as f32;
             let point = start + delta * t;
+            self.draw_soft_dot(point, radius, color);
+        }
+    }
 
-            for offset in -((half.ceil() as i32))..=((half.ceil() as i32)) {
-                let offset_f = offset as f32;
-                let px = (point + normal * offset_f).x.round() as i32;
-                let py = (point + normal * offset_f).y.round() as i32;
-                self.plot(px, py, color);
+    pub fn draw_soft_dot(&mut self, center: Vec2, radius: f32, color: [u8; 4]) {
+        if radius <= 0.0 || color[3] == 0 {
+            return;
+        }
+
+        let extent = radius + 1.0;
+        let min_x = (center.x - extent).floor() as i32;
+        let max_x = (center.x + extent).ceil() as i32;
+        let min_y = (center.y - extent).floor() as i32;
+        let max_y = (center.y + extent).ceil() as i32;
+
+        for y in min_y..=max_y {
+            for x in min_x..=max_x {
+                let dx = x as f32 + 0.5 - center.x;
+                let dy = y as f32 + 0.5 - center.y;
+                let dist = (dx * dx + dy * dy).sqrt();
+                let edge = radius + 0.5;
+                let coverage = (edge - dist).clamp(0.0, 1.0);
+                if coverage <= 0.0 {
+                    continue;
+                }
+
+                let alpha = (color[3] as f32 * coverage) as u8;
+                if alpha == 0 {
+                    continue;
+                }
+
+                self.plot(
+                    x,
+                    y,
+                    [color[0], color[1], color[2], alpha],
+                );
             }
         }
     }

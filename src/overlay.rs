@@ -4,16 +4,16 @@ use std::ptr;
 use windows::core::PCWSTR;
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
-    CreateCompatibleDC, DeleteDC, DeleteObject, SelectObject, BITMAPINFO, BITMAPINFOHEADER,
-    BI_RGB, DIB_RGB_COLORS, HGDIOBJ,
+    CreateCompatibleDC, DeleteDC, DeleteObject, SelectObject, AC_SRC_ALPHA, AC_SRC_OVER,
+    BITMAPINFO, BITMAPINFOHEADER, BI_RGB, BLENDFUNCTION, DIB_RGB_COLORS, HGDIOBJ,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DispatchMessageW, GetSystemMetrics,
-    PostQuitMessage, RegisterClassW, SetLayeredWindowAttributes, ShowWindow, TranslateMessage,
-    UpdateLayeredWindow, CS_HREDRAW, CS_VREDRAW, LWA_ALPHA, SM_CXSCREEN, SM_CYSCREEN, SW_SHOW,
-    ULW_ALPHA, WINDOW_EX_STYLE, WINDOW_STYLE, WM_DESTROY, WM_QUIT, WNDCLASSW, WS_EX_LAYERED,
-    WS_EX_NOACTIVATE, WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_POPUP,
+    PostQuitMessage, RegisterClassW, ShowWindow, TranslateMessage, UpdateLayeredWindow,
+    CS_HREDRAW, CS_VREDRAW, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN,
+    SM_YVIRTUALSCREEN, SW_SHOW, ULW_ALPHA, WINDOW_EX_STYLE, WINDOW_STYLE, WM_DESTROY,
+    WNDCLASSW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_POPUP,
 };
 
 use crate::render::FrameBuffer;
@@ -24,7 +24,8 @@ pub struct OverlayWindow {
     hwnd: HWND,
     width: u32,
     height: u32,
-    click_through: bool,
+    origin_x: i32,
+    origin_y: i32,
 }
 
 unsafe extern "system" fn window_proc(
@@ -43,7 +44,7 @@ unsafe extern "system" fn window_proc(
 }
 
 impl OverlayWindow {
-    pub fn create(click_through: bool) -> Result<Self> {
+    pub fn create() -> Result<Self> {
         unsafe {
             let instance = GetModuleHandleW(None)?;
             let class_name = to_wide(CLASS_NAME);
@@ -56,23 +57,23 @@ impl OverlayWindow {
                 ..Default::default()
             };
 
-            RegisterClassW(&wc);
+            let _ = RegisterClassW(&wc);
 
-            let width = GetSystemMetrics(SM_CXSCREEN) as u32;
-            let height = GetSystemMetrics(SM_CYSCREEN) as u32;
+            let origin_x = GetSystemMetrics(SM_XVIRTUALSCREEN);
+            let origin_y = GetSystemMetrics(SM_YVIRTUALSCREEN);
+            let width = GetSystemMetrics(SM_CXVIRTUALSCREEN) as u32;
+            let height = GetSystemMetrics(SM_CYVIRTUALSCREEN) as u32;
 
-            let mut ex_style = WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_NOACTIVATE;
-            if click_through {
-                ex_style |= WS_EX_TRANSPARENT;
-            }
+            let ex_style =
+                WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_NOACTIVATE | WS_EX_TRANSPARENT;
 
             let hwnd = CreateWindowExW(
                 WINDOW_EX_STYLE(ex_style.0),
                 PCWSTR(class_name.as_ptr()),
                 PCWSTR(class_name.as_ptr()),
                 WINDOW_STYLE(WS_POPUP.0),
-                0,
-                0,
+                origin_x,
+                origin_y,
                 width as i32,
                 height as i32,
                 None,
@@ -81,15 +82,21 @@ impl OverlayWindow {
                 None,
             )?;
 
-            SetLayeredWindowAttributes(hwnd, windows::Win32::Foundation::COLORREF(0), 0, LWA_ALPHA)?;
-            ShowWindow(hwnd, SW_SHOW);
+            let _ = ShowWindow(hwnd, SW_SHOW);
 
-            Ok(Self {
+            let overlay = Self {
                 hwnd,
                 width,
                 height,
-                click_through,
-            })
+                origin_x,
+                origin_y,
+            };
+
+            let frame = FrameBuffer::new(width, height);
+            overlay
+                .present(&frame)
+                .context("Failed to present initial overlay frame")?;
+            Ok(overlay)
         }
     }
 
@@ -97,26 +104,8 @@ impl OverlayWindow {
         (self.width, self.height)
     }
 
-    pub fn set_click_through(&mut self, enabled: bool) -> Result<()> {
-        if self.click_through == enabled {
-            return Ok(());
-        }
-
-        unsafe {
-            use windows::Win32::UI::WindowsAndMessaging::{GetWindowLongPtrW, SetWindowLongPtrW, GWL_EXSTYLE};
-
-            let style = GetWindowLongPtrW(self.hwnd, GWL_EXSTYLE);
-            let mut new_style = style as u32;
-            if enabled {
-                new_style |= WS_EX_TRANSPARENT.0;
-            } else {
-                new_style &= !WS_EX_TRANSPARENT.0;
-            }
-            SetWindowLongPtrW(self.hwnd, GWL_EXSTYLE, new_style as _);
-        }
-
-        self.click_through = enabled;
-        Ok(())
+    pub fn origin(&self) -> (i32, i32) {
+        (self.origin_x, self.origin_y)
     }
 
     pub fn present(&self, frame: &FrameBuffer) -> Result<()> {
@@ -149,18 +138,24 @@ impl OverlayWindow {
             )?;
             let old = SelectObject(hdc_mem, HGDIOBJ(hbmp.0));
 
-            ptr::copy_nonoverlapping(
-                bgra.as_ptr(),
-                bits as *mut u8,
-                bgra.len(),
-            );
+            ptr::copy_nonoverlapping(bgra.as_ptr(), bits as *mut u8, bgra.len());
 
             let point_source = POINT { x: 0, y: 0 };
             let mut size = windows::Win32::Foundation::SIZE {
                 cx: frame.width as i32,
                 cy: frame.height as i32,
             };
-            let point_dest = POINT { x: 0, y: 0 };
+            let point_dest = POINT {
+                x: self.origin_x,
+                y: self.origin_y,
+            };
+
+            let blend = BLENDFUNCTION {
+                BlendOp: AC_SRC_OVER as u8,
+                BlendFlags: 0,
+                SourceConstantAlpha: 255,
+                AlphaFormat: AC_SRC_ALPHA as u8,
+            };
 
             UpdateLayeredWindow(
                 self.hwnd,
@@ -170,13 +165,13 @@ impl OverlayWindow {
                 hdc_mem,
                 Some(&point_source),
                 windows::Win32::Foundation::COLORREF(0),
-                None,
+                Some(&blend),
                 ULW_ALPHA,
             )?;
 
             SelectObject(hdc_mem, old);
             let _ = DeleteObject(HGDIOBJ(hbmp.0));
-            DeleteDC(hdc_mem);
+            let _ = DeleteDC(hdc_mem);
             windows::Win32::Graphics::Gdi::ReleaseDC(None, hdc_screen);
         }
 
@@ -185,16 +180,14 @@ impl OverlayWindow {
 
     pub fn pump_messages(&self) -> bool {
         unsafe {
-            use windows::Win32::UI::WindowsAndMessaging::{
-                PeekMessageW, PM_REMOVE,
-            };
+            use windows::Win32::UI::WindowsAndMessaging::{PeekMessageW, PM_REMOVE, WM_QUIT};
 
             let mut msg = windows::Win32::UI::WindowsAndMessaging::MSG::default();
             while PeekMessageW(&mut msg, None, 0, 0, PM_REMOVE).into() {
                 if msg.message == WM_QUIT {
                     return false;
                 }
-                TranslateMessage(&msg);
+                let _ = TranslateMessage(&msg);
                 DispatchMessageW(&msg);
             }
             true

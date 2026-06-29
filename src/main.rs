@@ -3,7 +3,9 @@ mod math;
 mod overlay;
 mod pendulum;
 mod render;
+mod settings;
 mod trail;
+mod tray;
 
 use anyhow::{Context, Result};
 use clap::Parser;
@@ -16,6 +18,7 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 use trail::TrailSystem;
+use tray::{try_open_settings, TrayAction, TrayController};
 
 #[derive(Parser, Debug)]
 #[command(name = "cursor-trail", about = "Customizable cursor trail and hanging avatar for Windows 11")]
@@ -43,9 +46,13 @@ fn main() -> Result<()> {
     let mut config = Config::load(&config_path)?;
 
     let (reload_tx, reload_rx) = mpsc::channel();
-    watch_config(&config_path, reload_tx)?;
+    let _watcher = watch_config(&config_path, reload_tx)?;
 
-    let mut overlay = OverlayWindow::create(config.window.click_through)?;
+    let (apply_tx, apply_rx) = mpsc::channel();
+    let tray = TrayController::new().context("Failed to create system tray icon")?;
+
+    let mut overlay =
+        OverlayWindow::create().context("Failed to create overlay window")?;
     let (width, height) = overlay.dimensions();
     let mut frame = FrameBuffer::new(width, height);
 
@@ -53,21 +60,57 @@ fn main() -> Result<()> {
     let mut avatar = PendulumAvatar::new();
     let mut sprite = load_avatar_sprite(&config)?;
 
-    let target_frame_time = Duration::from_secs_f64(1.0 / config.window.fps.max(1) as f64);
+    let mut target_frame_time =
+        Duration::from_secs_f64(1.0 / config.window.fps.max(1) as f64);
     let mut last_frame = Instant::now();
+    let mut running = true;
 
-    loop {
+    while running {
         if !overlay.pump_messages() {
             break;
+        }
+
+        while let Some(action) = tray.try_recv_event() {
+            match action {
+                TrayAction::OpenSettings => {
+                    let _ = try_open_settings(config_path.clone(), config.clone(), apply_tx.clone());
+                }
+                TrayAction::ToggleTrail => {
+                    config.trail.enabled = !config.trail.enabled;
+                    let _ = config.save(&config_path);
+                }
+                TrayAction::ToggleAvatar => {
+                    config.avatar.enabled = !config.avatar.enabled;
+                    let _ = config.save(&config_path);
+                    sprite = load_avatar_sprite(&config)?;
+                    avatar.reset();
+                }
+                TrayAction::Quit => running = false,
+            }
+        }
+
+        if let Ok(new_config) = apply_rx.try_recv() {
+            apply_config(
+                &mut config,
+                new_config,
+                &mut overlay,
+                &mut sprite,
+                &mut avatar,
+                &mut target_frame_time,
+            )?;
         }
 
         if reload_rx.try_recv().is_ok() {
             match Config::load(&config_path) {
                 Ok(new_config) => {
-                    config = new_config;
-                    overlay.set_click_through(config.window.click_through)?;
-                    sprite = load_avatar_sprite(&config)?;
-                    avatar.reset();
+                    apply_config(
+                        &mut config,
+                        new_config,
+                        &mut overlay,
+                        &mut sprite,
+                        &mut avatar,
+                        &mut target_frame_time,
+                    )?;
                 }
                 Err(error) => eprintln!("Config reload failed: {error}"),
             }
@@ -78,19 +121,18 @@ fn main() -> Result<()> {
         last_frame = now;
 
         let (cursor_x, cursor_y) = get_cursor_position()?;
-        let cursor = math::Vec2::new(cursor_x as f32, cursor_y as f32);
+        let (origin_x, origin_y) = overlay.origin();
+        let cursor = math::Vec2::new(
+            (cursor_x - origin_x) as f32,
+            (cursor_y - origin_y) as f32,
+        );
 
         trail.update(cursor, &config.trail, dt);
         avatar.update(cursor, &config.avatar, dt);
 
         frame.clear();
-        trail.draw(&mut frame, &config.trail);
-        avatar.draw(
-            &mut frame,
-            cursor,
-            &config.avatar,
-            sprite.as_ref(),
-        );
+        trail.draw(&mut frame, &config.trail, cursor);
+        avatar.draw(&mut frame, cursor, &config.avatar, sprite.as_ref());
         overlay.present(&frame)?;
 
         let elapsed = now.elapsed();
@@ -99,6 +141,21 @@ fn main() -> Result<()> {
         }
     }
 
+    Ok(())
+}
+
+fn apply_config(
+    config: &mut Config,
+    new_config: Config,
+    _overlay: &mut OverlayWindow,
+    sprite: &mut Option<Sprite>,
+    avatar: &mut PendulumAvatar,
+    target_frame_time: &mut Duration,
+) -> Result<()> {
+    *config = new_config;
+    *sprite = load_avatar_sprite(config)?;
+    avatar.reset();
+    *target_frame_time = Duration::from_secs_f64(1.0 / config.window.fps.max(1) as f64);
     Ok(())
 }
 
@@ -116,7 +173,7 @@ fn load_avatar_sprite(config: &Config) -> Result<Option<Sprite>> {
     Ok(Some(Sprite::from_image(&image.to_rgba8())))
 }
 
-fn watch_config(path: &Path, reload_tx: mpsc::Sender<()>) -> Result<()> {
+fn watch_config(path: &Path, reload_tx: mpsc::Sender<()>) -> Result<RecommendedWatcher> {
     let (tx, rx) = mpsc::channel();
     let mut watcher = RecommendedWatcher::new(
         move |result: notify::Result<notify::Event>| {
@@ -142,5 +199,5 @@ fn watch_config(path: &Path, reload_tx: mpsc::Sender<()>) -> Result<()> {
         }
     });
 
-    Ok(())
+    Ok(watcher)
 }

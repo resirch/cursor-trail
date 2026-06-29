@@ -1,23 +1,21 @@
 [trail]
 enabled = true
-color = [120, 180, 255, 200]
-max_points = 28
-point_size = 10.0
-fade_speed = 1.2
-spacing = 6.0
-shape = "circle" # circle | square | star
+color = [255, 255, 255, 255]
+max_length = 300.0
+width = 5.0
+taper = 1.0
+kill_time = 0.10
 
 [avatar]
 enabled = true
 # image_path = "assets/avatar.png"
 string_length = 90.0
-size = 56.0
-gravity = 980.0   # pixels/s^2 — set to 0 for zero-gravity floating
-damping = 0.985
+string_slack = 0.40
+size = 25.0
+gravity = 900.0
+damping = 0.15
 string_color = [220, 220, 220, 220]
-string_width = 2.0
-swing_boost = 1.0
+string_width = 1.0
 
 [window]
 fps = 60
-click_through = true
